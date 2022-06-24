@@ -3,56 +3,6 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include "cpu.h"
 
-// YOLOv6 use the same focus in yolov5
-class YoloV5Focus : public ncnn::Layer
-{
-public:
-    YoloV5Focus()
-    {
-        one_blob_only = true;
-    }
-
-    virtual int forward(const ncnn::Mat& bottom_blob, ncnn::Mat& top_blob, const ncnn::Option& opt) const
-    {
-        int w = bottom_blob.w;
-        int h = bottom_blob.h;
-        int channels = bottom_blob.c;
-
-        int outw = w / 2;
-        int outh = h / 2;
-        int outc = channels * 4;
-
-        top_blob.create(outw, outh, outc, 4u, 1, opt.blob_allocator);
-        if (top_blob.empty())
-            return -100;
-
-        #pragma omp parallel for num_threads(opt.num_threads)
-        for (int p = 0; p < outc; p++)
-        {
-            const float* ptr = bottom_blob.channel(p % channels).row((p / channels) % 2) + ((p / channels) / 2);
-            float* outptr = top_blob.channel(p);
-
-            for (int i = 0; i < outh; i++)
-            {
-                for (int j = 0; j < outw; j++)
-                {
-                    *outptr = *ptr;
-
-                    outptr += 1;
-                    ptr += 2;
-                }
-
-                ptr += w;
-            }
-        }
-
-        return 0;
-    }
-};
-
-DEFINE_LAYER_CREATOR(YoloV5Focus)
-
-
 struct GridAndStride
 {
     int grid0;
@@ -232,7 +182,7 @@ int Yolo::load(const char* modeltype, int _target_size,  const float* _norm_vals
 #if NCNN_VULKAN
     yolo.opt.use_vulkan_compute = use_gpu;
 #endif
-    yolo.register_custom_layer("YoloV5Focus", YoloV5Focus_layer_creator);
+    
     yolo.opt.num_threads = ncnn::get_big_cpu_count();
     yolo.opt.blob_allocator = &blob_pool_allocator;
     yolo.opt.workspace_allocator = &workspace_pool_allocator;
@@ -288,13 +238,10 @@ int Yolo::load(AAssetManager* mgr, const char* modeltype, int _target_size,  con
     return 0;
 }
 
-
 int Yolo::detect(const cv::Mat& rgb, std::vector<Object>& objects, float prob_threshold, float nms_threshold)
 {
-
     int img_w = rgb.cols;
     int img_h = rgb.rows;
-
     // letterbox pad to multiple of 32
     int w = img_w;
     int h = img_h;
@@ -311,7 +258,6 @@ int Yolo::detect(const cv::Mat& rgb, std::vector<Object>& objects, float prob_th
         h = target_size;
         w = w * scale;
     }
-
     ncnn::Mat in = ncnn::Mat::from_pixels_resize(rgb.data, ncnn::Mat::PIXEL_RGB, img_w, img_h, w, h);
 
     // pad to target_size rectangle
@@ -331,7 +277,6 @@ int Yolo::detect(const cv::Mat& rgb, std::vector<Object>& objects, float prob_th
     {
         ncnn::Mat out;
         ex.extract("output", out);
-
         std::vector<int> strides = {8, 16, 32}; // might have stride=64
         std::vector<GridAndStride> grid_strides;
         generate_grids_and_stride(in_pad.w, in_pad.h, strides, grid_strides);
@@ -433,11 +378,8 @@ int Yolo::draw(cv::Mat& rgb, const std::vector<Object>& objects)
             y = 0;
         if (x + label_size.width > rgb.cols)
             x = rgb.cols - label_size.width;
-
         cv::rectangle(rgb, cv::Rect(cv::Point(x, y), cv::Size(label_size.width, label_size.height + baseLine)), cc, -1);
-
         cv::Scalar textcc = (color[0] + color[1] + color[2] >= 381) ? cv::Scalar(0, 0, 0) : cv::Scalar(255, 255, 255);
-
         cv::putText(rgb, text, cv::Point(x, y + label_size.height), cv::FONT_HERSHEY_SIMPLEX, 0.5, textcc, 1);
 
     }
