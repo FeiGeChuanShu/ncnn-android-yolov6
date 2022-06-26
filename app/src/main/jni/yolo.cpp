@@ -216,7 +216,7 @@ int Yolo::load(AAssetManager* mgr, const char* modeltype, int _target_size,  con
 #if NCNN_VULKAN
     yolo.opt.use_vulkan_compute = use_gpu;
 #endif
-    yolo.register_custom_layer("YoloV5Focus", YoloV5Focus_layer_creator);
+    //yolo.register_custom_layer("YoloV5Focus", YoloV5Focus_layer_creator);
     yolo.opt.num_threads = ncnn::get_big_cpu_count();
     yolo.opt.blob_allocator = &blob_pool_allocator;
     yolo.opt.workspace_allocator = &workspace_pool_allocator;
